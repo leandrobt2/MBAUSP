@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detalhes da Classificação - Admin</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Detalhes da Classificação</h1>
+            <div>
+                <button class="button button-primary" onclick="goBack()">Voltar</button>
+            </div>
+        </div>
+
+        <div id="alertBox" style="display: none;" class="alert"></div>
+
+        <div class="details-card">
+            <h2>Dados da Empresa</h2>
+            <div id="companyDetails"></div>
+        </div>
+
+        <div class="details-card">
+            <h2>Classificação Atual</h2>
+            <div id="currentClassification"></div>
+
+            <div class="form-group" id="unionSelectionGroup" style="display: none;">
+                <label for="unionSelect">Selecionar Novo Sindicato:</label>
+                <select id="unionSelect" class="union-select"></select>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <button id="approveBtn" class="button button-success" onclick="approve()">Aprovar</button>
+                <button id="modifyBtn" class="button button-primary" onclick="showUnionSelection()">Modificar</button>
+                <button id="rejectBtn" class="button button-danger" onclick="reject()">Rejeitar</button>
+                <button id="confirmModifyBtn" class="button button-success" style="display: none;" onclick="approveWithModification()">
+                    Confirmar Modificação
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let companyData = null;
+        let availableUnions = [];
+
+        // Check authentication and load data on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!localStorage.getItem('adminToken')) {
+                window.location.href = '/admin/login.html';
+                return;
+            }
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const companyId = urlParams.get('id');
+            
+            if (!companyId) {
+                showAlert('ID da empresa não fornecido');
+                return;
+            }
+
+            await Promise.all([
+                loadCompanyDetails(companyId),
+                loadUnions()
+            ]);
+        });
+
+        function showAlert(message, type = 'error') {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.className = `alert alert-${type}`;
+            alertBox.textContent = message;
+            alertBox.style.display = 'block';
+            setTimeout(() => alertBox.style.display = 'none', 5000);
+        }
+
+        async function loadCompanyDetails(companyId) {
+            try {
+                const response = await fetch(`/api/companies/${companyId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to load company details');
+                }
+
+                companyData = await response.json();
+                displayCompanyDetails();
+                displayClassification();
+            } catch (error) {
+                showAlert('Erro ao carregar detalhes da empresa: ' + error.message);
+            }
+        }
+
+        async function loadUnions() {
+            try {
+                const response = await fetch('/api/unions', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to load unions');
+                }
+
+                availableUnions = await response.json();
+                populateUnionSelect();
+            } catch (error) {
+                showAlert('Erro ao carregar lista de sindicatos: ' + error.message);
+            }
+        }
+
+        function displayCompanyDetails() {
+            const detailsDiv = document.getElementById('companyDetails');
+            detailsDiv.innerHTML = `
+                <div class="form-group">
+                    <label>CNPJ:</label>
+                    <div>${formatCNPJ(companyData.cnpj)}</div>
+                </div>
+                <div class="form-group">
+                    <label>Razão Social:</label>
+                    <div>${companyData.corporate_name}</div>
+                </div>
+                <div class="form-group">
+                    <label>Nome Fantasia:</label>
+                    <div>${companyData.trading_name || '-'}</div>
+                </div>
+                <div class="form-group">
+                    <label>CNAE Principal:</label>
+                    <div>${companyData.primary_cnae}</div>
+                </div>
+            `;
+        }
+
+        function displayClassification() {
+            const classDiv = document.getElementById('currentClassification');
+            classDiv.innerHTML = `
+                <div class="form-group">
+                    <label>Sindicato Sugerido:</label>
+                    <div>${companyData.union_name}</div>
+                </div>
+                <div class="form-group">
+                    <label>Confiança do Modelo:</label>
+                    <div>${(companyData.confidence_score * 100).toFixed(1)}%</div>
+                </div>
+                <div class="form-group">
+                    <label>Status:</label>
+                    <div>
+                        <span class="badge badge-${companyData.classification_status.toLowerCase()}">
+                            ${translateStatus(companyData.classification_status)}
+                        </span>
+                    </div>
+                </div>
+            `;
+
+            // Update button visibility based on status
+            const isPending = companyData.classification_status === 'PENDING';
+            document.getElementById('approveBtn').style.display = isPending ? 'inline-block' : 'none';
+            document.getElementById('modifyBtn').style.display = isPending ? 'inline-block' : 'none';
+            document.getElementById('rejectBtn').style.display = isPending ? 'inline-block' : 'none';
+        }
+
+        function populateUnionSelect() {
+            const select = document.getElementById('unionSelect');
+            select.innerHTML = '<option value="">Selecione um sindicato...</option>' +
+                availableUnions.map(union => 
+                    `<option value="${union.union_id}">${union.name}</option>`
+                ).join('');
+        }
+
+        function showUnionSelection() {
+            document.getElementById('unionSelectionGroup').style.display = 'block';
+            document.getElementById('approveBtn').style.display = 'none';
+            document.getElementById('modifyBtn').style.display = 'none';
+            document.getElementById('rejectBtn').style.display = 'none';
+            document.getElementById('confirmModifyBtn').style.display = 'inline-block';
+        }
+
+        async function approve() {
+            await updateClassification('CONFIRMED');
+        }
+
+        async function reject() {
+            await updateClassification('REJECTED');
+        }
+
+        async function approveWithModification() {
+            const unionId = document.getElementById('unionSelect').value;
+            if (!unionId) {
+                showAlert('Por favor, selecione um sindicato');
+                return;
+            }
+            await updateClassification('CONFIRMED', unionId);
+        }
+
+        async function updateClassification(status, unionId = null) {
+            try {
+                const response = await fetch(`/api/classifications/${companyData.company_id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('adminToken')}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        status,
+                        unionId: unionId || companyData.union_id
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to update classification');
+                }
+
+                showAlert('Classificação atualizada com sucesso', 'success');
+                setTimeout(() => window.location.href = 'index.html', 2000);
+            } catch (error) {
+                showAlert('Erro ao atualizar classificação: ' + error.message);
+            }
+        }
+
+        function formatCNPJ(cnpj) {
+            return cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+        }
+
+        function translateStatus(status) {
+            const translations = {
+                'PENDING': 'Pendente',
+                'CONFIRMED': 'Aprovado',
+                'REJECTED': 'Rejeitado'
+            };
+            return translations[status] || status;
+        }
+
+        function goBack() {
+            window.location.href = 'index.html';
+        }
+    </script>
+</body>
+</html>

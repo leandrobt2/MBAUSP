@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Admin - Classificação Sindical</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="details-card" style="max-width: 400px; margin: 100px auto;">
+            <h1 style="text-align: center;">Login Administrativo</h1>
+            
+            <div id="alertBox" style="display: none;" class="alert"></div>
+
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="username">Usuário:</label>
+                    <input type="text" id="username" class="form-control" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Senha:</label>
+                    <input type="password" id="password" class="form-control" required>
+                </div>
+
+                <button type="submit" class="button button-primary" style="width: 100%;">
+                    Entrar
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        async function handleLogin(event) {
+            event.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Invalid credentials');
+                }
+
+                const data = await response.json();
+                localStorage.setItem('adminToken', data.token);
+                window.location.href = 'index.html';
+            } catch (error) {
+                showAlert('Usuário ou senha inválidos');
+            }
+        }
+
+        function showAlert(message, type = 'error') {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.className = `alert alert-${type}`;
+            alertBox.textContent = message;
+            alertBox.style.display = 'block';
+            setTimeout(() => alertBox.style.display = 'none', 5000);
+        }
+
+        // Redirect to dashboard if already logged in
+        document.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('adminToken')) {
+                window.location.href = 'index.html';
+            }
+        });
+    </script>
+</body>
+</html>

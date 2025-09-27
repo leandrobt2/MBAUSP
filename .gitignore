@@ -1,0 +1,30 @@
+# Python virtual environments
+data-analytics/myenv/
+data-analytics/converter_env/
+tcc-ori.py
+
+# Sample data directory
+data-analytics/samples/
+
+# Excel files
+*.xlsx
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# VS Code settings
+.vscode/
+
+# Environment variables
+.env
+
+# Operating System files
+.DS_Store
+Thumbs.db

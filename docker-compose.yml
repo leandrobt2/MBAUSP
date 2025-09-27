@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # Frontend Service (React)
+  frontend:
+    build: ./src/frontend
+    ports:
+      - "80:80"
+    environment:
+      - NODE_ENV=production
+      - API_URL=http://api-gateway:3000
+    depends_on:
+      - api-gateway
+
+  # API Gateway Service
+  api-gateway:
+    build: ./src/api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET}
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@db:5432/union_classification
+      - ML_ENGINE_URL=http://ml-engine:5000
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3001
+      - REPORTING_SERVICE_URL=http://reporting-service:3002
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    depends_on:
+      - db
+      - ml-engine
+      - rabbitmq
+
+  # ML Engine Service
+  ml-engine:
+    build: ./src/ml-engine
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5001
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@db:5432/union_classification
+    depends_on:
+      - db
+      - mlflow
+
+  # MLflow Service
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    ports:
+      - "5001:5001"
+    command: mlflow server --host 0.0.0.0 --port 5001 --backend-store-uri postgresql://postgres:${DB_PASSWORD}@db:5432/mlflow --default-artifact-root /mlflow/artifacts
+    environment:
+      - MLFLOW_TRACKING_URI=postgresql://postgres:${DB_PASSWORD}@db:5432/mlflow
+    volumes:
+      - mlflow_data:/mlflow/artifacts
+    depends_on:
+      - db
+
+  # Notification Service
+  notification-service:
+    build: ./src/notification-service
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@db:5432/union_classification
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    depends_on:
+      - db
+      - rabbitmq
+
+  # Reporting Service
+  reporting-service:
+    build: ./src/reporting-service
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@db:5432/union_classification
+    depends_on:
+      - db
+
+  # Message Queue
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
+
+  # Database Service (PostgreSQL)
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_MULTIPLE_DATABASES=union_classification,mlflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  mlflow_data:
